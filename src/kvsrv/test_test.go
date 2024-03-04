@@ -1,8 +1,6 @@
 package kvsrv
 
 import (
-	"log"
-
 	"6.5840/models"
 	"6.5840/porcupine"
 
@@ -246,7 +244,7 @@ func GenericTest(t *testing.T, nclients int, unreliable bool, randomkeys bool) {
 				}
 				nv := "x " + strconv.Itoa(cli) + " " + strconv.Itoa(j) + " y"
 				if (rand.Int() % 1000) < 500 {
-					log.Printf("%d: client new append %v\n", cli, nv)
+					// log.Printf("%d: client new append %v\n", cli, nv)
 					l := Append(cfg, myck, key, nv, opLog, cli)
 					if !randomkeys {
 						if j > 0 {
@@ -267,7 +265,7 @@ func GenericTest(t *testing.T, nclients int, unreliable bool, randomkeys bool) {
 					Put(cfg, myck, key, nv, opLog, cli)
 					j++
 				} else {
-					log.Printf("%d: client new get %v\n", cli, key)
+					// log.Printf("%d: client new get %v\n", cli, key)
 					v := Get(cfg, myck, key, opLog, cli)
 					// the following check only makes sense when we're not using random keys
 					if !randomkeys && v != last {
@@ -472,7 +470,7 @@ func TestMemPutMany(t *testing.T) {
 	v := randValue(MEM)
 
 	cks := make([]*Clerk, NCLIENT)
-	for i, _ := range cks {
+	for i := range cks {
 		cks[i] = cfg.makeClient()
 	}
 
@@ -525,7 +523,7 @@ func TestMemGetMany(t *testing.T) {
 	cfg.deleteClient(ck)
 
 	cks := make([]*Clerk, NCLIENT)
-	for i, _ := range cks {
+	for i := range cks {
 		cks[i] = cfg.makeClient()
 	}
 

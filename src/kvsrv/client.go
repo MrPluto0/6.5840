@@ -2,7 +2,6 @@ package kvsrv
 
 import (
 	"crypto/rand"
-	"log"
 	"math/big"
 	"time"
 
@@ -28,28 +27,24 @@ func MakeClerk(server *labrpc.ClientEnd) *Clerk {
 	return ck
 }
 
-func (ck *Clerk) Call(svcMethod string, args interface{}, reply interface{}, timeout time.Duration, retryTimes int) {
-	if retryTimes <= 0 {
-		log.Printf("[error] no reply of %s was received from the server.\n", svcMethod)
-		return
-	}
+func (ck *Clerk) Call(svcMethod string, args interface{}, reply interface{}, timeout time.Duration) {
+	for {
+		done := make(chan bool)
+		go func() {
+			ok := ck.server.Call(svcMethod, args, reply)
+			done <- ok
+		}()
 
-	done := make(chan bool)
-	go func() {
-		ok := ck.server.Call(svcMethod, args, reply)
-		done <- ok
-	}()
-
-	select {
-	case <-time.After(timeout):
-		log.Printf("[timeout] retry to send rpc %v.\n", svcMethod)
-		ck.Call(svcMethod, args, reply, timeout, retryTimes-1)
-	case ok := <-done:
-		if !ok {
-			log.Printf("[fail] retry to send rpc %v.\n", svcMethod)
-			ck.Call(svcMethod, args, reply, timeout, retryTimes-1)
-		} else {
-			log.Printf("[success] %s \n", svcMethod)
+		select {
+		case <-time.After(timeout):
+			// log.Printf("[timeout] retry to send rpc for %v.\n", args)
+		case ok := <-done:
+			if ok {
+				// log.Printf("[success] %s %v %v\n", svcMethod, args, reply)
+				return
+			} else {
+				// log.Printf("[fail] retry to send rpc for %v.\n", args)
+			}
 		}
 	}
 }
@@ -70,7 +65,7 @@ func (ck *Clerk) Get(key string) string {
 		Id:  nrand(),
 		Key: key,
 	}
-	ck.Call("KVServer.Get", &args, &reply, 3*time.Second, 3)
+	ck.Call("KVServer.Get", &args, &reply, 3*time.Second)
 
 	// You will have to modify this function.
 	return reply.Value
@@ -93,7 +88,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) string {
 		Value: value,
 	}
 
-	ck.Call("KVServer."+op, &args, &reply, 3*time.Second, 3)
+	ck.Call("KVServer."+op, &args, &reply, 3*time.Second)
 	return reply.Value
 }
 

@@ -75,36 +75,6 @@ func readLocalFile(file string) []KeyValue {
 	return kva
 }
 
-// main/mrworker.go calls this function.
-func Worker(mapf MapF, reducef ReduceF) {
-
-	// Your worker implementation here.
-	for {
-		task := CallAllocTask()
-		if task == nil {
-			break
-		}
-		if task.Type == 0 {
-			continue
-		}
-		// log.Printf("[%d] task %d starts running.\n", task.Type, task.ID)
-
-		switch task.Type {
-		case MAP:
-			runMapWorker(mapf, task)
-		case REDUCE:
-			runReduceWorker(reducef, task)
-		}
-
-		if ok := CallFinishTask(task); ok {
-			// log.Printf("[%d] task %d finished.\n", task.Type, task.ID)
-		} else {
-			log.Fatal("worker call finish task fail\n")
-		}
-		time.Sleep(time.Second)
-	}
-}
-
 func runMapWorker(mapf MapF, task *Task) {
 	content, err := os.ReadFile(task.File)
 	if err != nil {
@@ -196,7 +166,7 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	sockname := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
-		log.Println(err.Error())
+		// log.Println(err.Error())
 		return false
 	}
 	defer c.Close()
@@ -207,5 +177,34 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	} else {
 		log.Println(err.Error())
 		return false
+	}
+}
+
+// main/mrworker.go calls this function.
+func Worker(mapf MapF, reducef ReduceF) {
+
+	// Your worker implementation here.
+	for {
+		task := CallAllocTask()
+		if task == nil {
+			break
+		}
+		if task.Type == 0 {
+			continue
+		}
+
+		switch task.Type {
+		case MAP:
+			runMapWorker(mapf, task)
+		case REDUCE:
+			runReduceWorker(reducef, task)
+		}
+
+		if ok := CallFinishTask(task); ok {
+			// log.Printf("[%d] task %d finished.\n", task.Type, task.ID)
+		} else {
+			log.Fatal("worker call finish task fail\n")
+			time.Sleep(time.Second)
+		}
 	}
 }

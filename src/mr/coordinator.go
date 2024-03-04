@@ -85,7 +85,7 @@ func (c *Coordinator) FinishTask(task Task, _ *EmptyArgs) error {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
-	// check if tasks' state are COMPLETE
+	// check if map or reduce tasks' state are all COMPLETE
 	checkTasksDone := func(tasks []Task) bool {
 		tasksDone := true
 		for _, t := range tasks {
@@ -97,8 +97,10 @@ func (c *Coordinator) FinishTask(task Task, _ *EmptyArgs) error {
 		return tasksDone
 	}
 
+	// update this task
 	task.State = COMPLETE
 
+	// update client state
 	switch task.Type {
 	case MAP:
 		c.MapTasks[task.ID] = task

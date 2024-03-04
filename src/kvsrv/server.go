@@ -17,8 +17,8 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 type KVServer struct {
 	mu sync.Mutex
 
-	kvs    map[string]string
-	rpcIds map[int64]bool
+	kvs     map[string]string
+	records map[int64]string
 	// Your definitions here.
 }
 
@@ -27,11 +27,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	_, exist := kv.rpcIds[args.Id]
+	// check if duplicate rpc
+	val, exist := kv.records[args.Id]
 	if exist {
+		reply.Value = val
 		return
-	} else {
-		kv.rpcIds[args.Id] = true
 	}
 
 	value, ok := kv.kvs[args.Key]
@@ -40,6 +40,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	} else {
 		reply.Value = ""
 	}
+	// store the value of rpc
+	kv.records[args.Id] = value
 }
 
 func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
@@ -47,14 +49,14 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	_, exist := kv.rpcIds[args.Id]
+	val, exist := kv.records[args.Id]
 	if exist {
+		reply.Value = val
 		return
-	} else {
-		kv.rpcIds[args.Id] = true
 	}
 
 	kv.kvs[args.Key] = args.Value
+	kv.records[args.Id] = args.Value
 }
 
 func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
@@ -62,11 +64,10 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	_, exist := kv.rpcIds[args.Id]
+	val, exist := kv.records[args.Id]
 	if exist {
+		reply.Value = val
 		return
-	} else {
-		kv.rpcIds[args.Id] = true
 	}
 
 	value, ok := kv.kvs[args.Key]
@@ -76,6 +77,7 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Value = ""
 	}
 
+	kv.records[args.Id] = value
 	kv.kvs[args.Key] = value + args.Value
 }
 
@@ -84,7 +86,7 @@ func StartKVServer() *KVServer {
 
 	// You may need initialization code here.
 	kv.kvs = make(map[string]string)
-	kv.rpcIds = make(map[int64]bool)
+	kv.records = make(map[int64]string)
 
 	return kv
 }
