@@ -5,7 +5,7 @@ type AppendEntriesArgs struct {
 	LeaderId     int        // so follower can redirect clients
 	PrevLogIndex int        // index of log entry immediately preceding new ones
 	PrevLogTerm  int        // term of prevLogIndex entry
-	Entries      []LogEntry // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	Entries      LogEntries // log entries to store (empty for heartbeat; may send more than one for efficiency)
 	LeaderCommit int        // leader’s commitIndex
 }
 
@@ -29,8 +29,34 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		rf.updateTerm(args.Term)
 	}
 
-	rf.resetElectionTime()
 	reply.Term = args.Term
+	rf.resetElectionTime()
+	// DPrintf("[S%d T%d]resettime to %d", rf.me, rf.currentTerm, rf.electTime.UnixMilli())
+
+	// log replication
+	if len(args.Entries) > 0 {
+		if args.PrevLogIndex > rf.logs.lastIndex() || rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm {
+			return
+		}
+		// If an existing entry conflicts with a new one (same index but different terms),
+		// delete the existing entry and all that follow it.
+		for i, entry := range args.Entries {
+			logIndex := i + args.PrevLogIndex + 1
+			// delete the existing entry and all that follow it
+			if logIndex <= rf.logs.lastIndex() && entry.Term != rf.logs[logIndex].Term {
+				rf.logs = rf.logs[:logIndex]
+			}
+			if logIndex > rf.logs.lastIndex() {
+				rf.logs = append(rf.logs, args.Entries[i:]...)
+			}
+		}
+
+		if args.LeaderCommit > rf.commitIndex {
+			rf.commitIndex = min(args.LeaderCommit, 1)
+			rf.applyCond.Broadcast()
+		}
+	}
+
 	reply.Success = true
 }
 

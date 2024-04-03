@@ -40,7 +40,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = args.Term
 	rf.resetElectionTime()
 
-	if rf.votedFor != Null || args.CandidateId == Null {
+	if rf.votedFor != Null {
 		return
 	}
 

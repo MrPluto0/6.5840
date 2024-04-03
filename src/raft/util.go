@@ -12,3 +12,10 @@ func DPrintf(format string, a ...interface{}) {
 		log.Printf(format, a...)
 	}
 }
+
+func min(a int, b int) int {
+	if a > b {
+		return b
+	}
+	return a
+}
