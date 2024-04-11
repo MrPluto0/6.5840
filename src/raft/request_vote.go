@@ -35,29 +35,19 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.updateTerm(args.Term)
 	}
 
-	// update term
-	rf.currentTerm = args.Term
 	reply.Term = args.Term
-	rf.resetElectionTime()
 
-	if rf.votedFor != Null {
-		return
+	// If votedFor is null or candidateId,
+	// and candidate’s log is at least as up-to-date as receiver’s log, grant vote
+	if rf.votedFor == Null || rf.votedFor == args.CandidateId {
+		if (args.LastLogTerm > rf.logs.lastTerm()) ||
+			(args.LastLogTerm == rf.logs.lastTerm() && args.LastLogIndex >= rf.logs.lastIndex()) {
+			rf.votedFor = args.CandidateId
+			rf.resetElectionTime()
+			reply.VoteGranted = true
+		}
 	}
 
-	reply.VoteGranted = true
-	rf.votedFor = args.CandidateId
-
-	// lastLogIndex := len(rf.logs) - 1
-	// if lastLogIndex < 0 {
-	// 	reply.VoteGranted = true
-	// 	return
-	// }
-
-	// lastLogTerm := rf.logs[lastLogIndex].Term
-	// if args.LastLogIndex >= lastLogIndex && args.LastLogTerm >= lastLogTerm {
-	// 	reply.VoteGranted = true
-	// 	return
-	// }
 }
 
 // example code to send a RequestVote RPC to a server.
