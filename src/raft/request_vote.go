@@ -43,8 +43,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if (args.LastLogTerm > rf.logs.lastTerm()) ||
 			(args.LastLogTerm == rf.logs.lastTerm() && args.LastLogIndex >= rf.logs.lastIndex()) {
 			rf.votedFor = args.CandidateId
-			rf.resetElectionTime()
 			reply.VoteGranted = true
+			rf.resetElectionTime()
+			rf.persist()
 		}
 	}
 

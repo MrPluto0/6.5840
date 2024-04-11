@@ -20,12 +20,14 @@ package raft
 import (
 	//	"bytes"
 
+	"bytes"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	//	"6.5840/labgob"
+	"6.5840/labgob"
 	"6.5840/labrpc"
 )
 
@@ -60,8 +62,8 @@ const (
 )
 
 const (
-	MaxELectionTime = 1500
-	MinElectionTime = 1000
+	MaxELectionTime = 1000
+	MinElectionTime = 700
 	HeartbeatTime   = 100
 )
 
@@ -120,6 +122,7 @@ func (rf *Raft) updateState(state ServerState) {
 	} else {
 		rf.votedFor = rf.me
 	}
+	rf.persist()
 
 	// Reinitialized after election
 	if state == Leader {
@@ -135,6 +138,7 @@ func (rf *Raft) updateTerm(term int) {
 	rf.currentTerm = term
 	rf.state = Follower
 	rf.votedFor = Null
+	rf.persist()
 }
 
 // save Raft's persistent state to stable storage,
@@ -147,12 +151,14 @@ func (rf *Raft) updateTerm(term int) {
 func (rf *Raft) persist() {
 	// Your code here (3C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// raftstate := w.Bytes()
-	// rf.persister.Save(raftstate, nil)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.logs)
+	// DPrintf("persist %d %v", rf.me, rf.logs)
+	raftstate := w.Bytes()
+	rf.persister.Save(raftstate, nil)
 }
 
 // restore previously persisted state.
@@ -162,17 +168,21 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (3C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var voteFor int
+	var logs LogEntries
+	if d.Decode(&currentTerm) != nil ||
+		d.Decode(&voteFor) != nil ||
+		d.Decode(&logs) != nil {
+		panic("error when decoding persist data")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = voteFor
+		rf.logs = logs
+		// DPrintf("read persist %d %v", rf.me, rf.logs)
+	}
 }
 
 // the service says it has created a snapshot that has
@@ -215,6 +225,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	}
 
 	rf.logs = append(rf.logs, log)
+	rf.persist()
 
 	return index, term, isLeader
 }
@@ -394,7 +405,7 @@ func (rf *Raft) applyTicker() {
 				CommandIndex: rf.lastApplied + 1,
 				Command:      rf.logs[rf.lastApplied+1].Command,
 			}
-			DPrintf("[S%d T%d]apply log: %d", rf.me, rf.currentTerm, msg.CommandIndex)
+			DPrintf("[S%d T%d]apply log: %d %v", rf.me, rf.currentTerm, msg.CommandIndex, msg.Command)
 			rf.mu.Unlock()
 			rf.applyCh <- msg // may wait for applyCh to get msg, so use Unlock()
 			rf.mu.Lock()
@@ -464,13 +475,13 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.nextIndex = make([]int, len(peers))
 	rf.matchIndex = make([]int, len(peers))
 
-	for i := 0; i < len(peers); i++ {
-		rf.nextIndex[i] = 1
-		rf.matchIndex[i] = 0
-	}
-
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
+
+	for i := 0; i < len(peers); i++ {
+		rf.nextIndex[i] = rf.logs.lastIndex() + 1
+		rf.matchIndex[i] = 0
+	}
 
 	// start ticker goroutine to start elections
 	go rf.ticker()

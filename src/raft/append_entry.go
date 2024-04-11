@@ -34,7 +34,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.resetElectionTime()
 
 	if len(args.Entries) > 0 {
-		DPrintf("[S%d T%d]log replication %d %d", rf.me, rf.currentTerm, len(args.Entries), rf.logs.lastIndex())
+		DPrintf("[S%d T%d]log replication %v %d", rf.me, rf.currentTerm, len(args.Entries), rf.logs.lastIndex())
 	}
 
 	// log replication
@@ -57,9 +57,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// delete the existing entry and all that follow it
 		if logIndex <= rf.logs.lastIndex() && entry.Term != rf.logs[logIndex].Term {
 			rf.logs = rf.logs[:logIndex]
+			rf.persist()
 		}
 		if logIndex > rf.logs.lastIndex() {
 			rf.logs = append(rf.logs, args.Entries[i:]...)
+			rf.persist()
 			break
 		}
 	}
