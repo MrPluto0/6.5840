@@ -10,8 +10,9 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int  // currentTerm, for leader to update itself
-	Success bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+	Term         int  // currentTerm, for leader to update itself
+	Success      bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+	PrevLogIndex int  // index of log entry preceding new ones actually to update Args.PrevLogIndex
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -31,30 +32,42 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	reply.Term = args.Term
 	rf.resetElectionTime()
-	// DPrintf("[S%d T%d]resettime to %d", rf.me, rf.currentTerm, rf.electTime.UnixMilli())
+
+	if len(args.Entries) > 0 {
+		DPrintf("[S%d T%d]log replication %d %d", rf.me, rf.currentTerm, len(args.Entries), rf.logs.lastIndex())
+	}
 
 	// log replication
-	if len(args.Entries) > 0 {
-		if args.PrevLogIndex > rf.logs.lastIndex() || rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm {
-			return
-		}
-		// If an existing entry conflicts with a new one (same index but different terms),
-		// delete the existing entry and all that follow it.
-		for i, entry := range args.Entries {
-			logIndex := i + args.PrevLogIndex + 1
-			// delete the existing entry and all that follow it
-			if logIndex <= rf.logs.lastIndex() && entry.Term != rf.logs[logIndex].Term {
-				rf.logs = rf.logs[:logIndex]
-			}
-			if logIndex > rf.logs.lastIndex() {
-				rf.logs = append(rf.logs, args.Entries[i:]...)
+	if args.PrevLogIndex > rf.logs.lastIndex() ||
+		(args.PrevLogIndex <= rf.logs.lastIndex() && rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm) {
+		conflictIndex := min(args.PrevLogIndex, rf.logs.lastIndex())
+		for i := conflictIndex - 1; i >= 0; i-- {
+			if rf.logs[i].Term == args.PrevLogTerm || i == 0 {
+				reply.PrevLogIndex = i
+				break
 			}
 		}
+		return
+	}
 
-		if args.LeaderCommit > rf.commitIndex {
-			rf.commitIndex = min(args.LeaderCommit, 1)
-			rf.applyCond.Broadcast()
+	// If an existing entry conflicts with a new one (same index but different terms),
+	// delete the existing entry and all that follow it.
+	for i, entry := range args.Entries {
+		logIndex := i + args.PrevLogIndex + 1
+		// delete the existing entry and all that follow it
+		if logIndex <= rf.logs.lastIndex() && entry.Term != rf.logs[logIndex].Term {
+			rf.logs = rf.logs[:logIndex]
 		}
+		if logIndex > rf.logs.lastIndex() {
+			rf.logs = append(rf.logs, args.Entries[i:]...)
+			break
+		}
+	}
+
+	if args.LeaderCommit > rf.commitIndex {
+		// DPrintf("[S%d T%d]follower broadcast", rf.me, rf.currentTerm)
+		rf.commitIndex = min(args.LeaderCommit, rf.logs.lastIndex())
+		rf.applyCond.Broadcast()
 	}
 
 	reply.Success = true
