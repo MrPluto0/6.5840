@@ -7,26 +7,33 @@ type LogEntry struct {
 
 type LogEntries []LogEntry
 
-func (le LogEntries) getTerm(i int) int {
-	if i < 0 {
-		return -1
-	} else {
-		return le[i].Term
-	}
+func (rf *Raft) getLog(virtualIdx int) LogEntry {
+	realIdx := virtualIdx - rf.lastIncludedIndex
+	return rf.logs[realIdx]
 }
 
-func (le LogEntries) lastIndex() int {
-	return len(le) - 1
+func (rf *Raft) getLastLog() LogEntry {
+	return rf.logs[len(rf.logs)-1]
 }
 
-func (le LogEntries) last() LogEntry {
-	return le[le.lastIndex()]
+func (rf *Raft) getLogTerm(virtualIdx int) int {
+	return rf.getLog(virtualIdx).Term
 }
 
-func (le LogEntries) lastTerm() int {
-	if le.lastIndex() > 0 {
-		return le.last().Term
-	} else {
-		return -1
-	}
+func (rf *Raft) getLastLogTerm() int {
+	return rf.getLastLog().Term
+}
+
+func (rf *Raft) getLastIndex() int {
+	return rf.lastIncludedIndex + len(rf.logs) - 1
+}
+
+func (rf *Raft) getLogHead(virtualIdx int) LogEntries {
+	realIdx := virtualIdx - rf.lastIncludedIndex
+	return rf.logs[:realIdx]
+}
+
+func (rf *Raft) getLogTail(virtualIdx int) LogEntries {
+	realIdx := virtualIdx - rf.lastIncludedIndex
+	return rf.logs[realIdx:]
 }
