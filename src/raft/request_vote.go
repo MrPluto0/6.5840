@@ -1,5 +1,7 @@
 package raft
 
+import "sync/atomic"
+
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 type RequestVoteArgs struct {
@@ -40,15 +42,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// If votedFor is null or candidateId,
 	// and candidate’s log is at least as up-to-date as receiver’s log, grant vote
 	if rf.votedFor == Null || rf.votedFor == args.CandidateId {
-		if (args.LastLogTerm > rf.logs.lastTerm()) ||
-			(args.LastLogTerm == rf.logs.lastTerm() && args.LastLogIndex >= rf.logs.lastIndex()) {
+		if (args.LastLogTerm > rf.getLastLogTerm()) ||
+			(args.LastLogTerm == rf.getLastLogTerm() && args.LastLogIndex >= rf.getLastIndex()) {
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
 			rf.resetElectionTime()
 			rf.persist()
 		}
 	}
-
 }
 
 // example code to send a RequestVote RPC to a server.
@@ -80,10 +81,64 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // the struct itself.
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-
 	rf.mu.Lock()
 	DPrintf("[S%d T%d]RequestVote %v: %v S%d T%d", rf.me, rf.currentTerm, ok, reply.VoteGranted, server, reply.Term)
 	rf.mu.Unlock()
 
 	return ok
+}
+
+func (rf *Raft) startElection() {
+	// update current status
+	rf.updateState(Candidate)
+	rf.resetElectionTime()
+
+	// init the RequestVoteArgs and RequestVoteReply
+	args := RequestVoteArgs{
+		Term:         rf.currentTerm,
+		CandidateId:  rf.me,
+		LastLogIndex: rf.getLastIndex(),
+		LastLogTerm:  rf.getLastLogTerm(),
+	}
+
+	// send RequestVote to each server
+	voteCount := int32(1)
+	for i := 0; i < len(rf.peers); i++ {
+		if i == rf.me {
+			// rf.resetElectionTime()
+			continue
+		}
+		go rf.handleRequestVote(i, &args, &voteCount)
+	}
+}
+
+func (rf *Raft) handleRequestVote(server int, args *RequestVoteArgs, voteCount *int32) {
+	var reply RequestVoteReply
+	success := rf.sendRequestVote(server, args, &reply)
+	if !success {
+		return
+	}
+
+	// receive the rpc's response
+	func() {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+		// invalid rpc
+		if rf.currentTerm != args.Term {
+			return
+		}
+
+		if reply.Term > rf.currentTerm {
+			rf.updateTerm(args.Term)
+			return
+		}
+		if !reply.VoteGranted {
+			return
+		}
+		count := atomic.AddInt32(voteCount, 1)
+		if rf.state == Candidate && int(count) >= len(rf.peers)/2+1 {
+			rf.updateState(Leader)
+			rf.resetElectionTime()
+		}
+	}()
 }

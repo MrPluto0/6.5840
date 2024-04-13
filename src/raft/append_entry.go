@@ -10,16 +10,16 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term         int  // currentTerm, for leader to update itself
-	Success      bool // true if follower contained entry matching prevLogIndex and prevLogTerm
-	PrevLogIndex int  // index of log entry preceding new ones actually to update Args.PrevLogIndex
+	Term    int  // currentTerm, for leader to update itself
+	Success bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+	XTerm   int  // term in the conflicting entry (if any)
+	XIndex  int  // index of first entry with that term (if any)
+	XLen    int  // log length
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
-	defer func() {
-		rf.mu.Unlock()
-	}()
+	defer rf.mu.Unlock()
 
 	reply.Success = false
 	if args.Term < rf.currentTerm {
@@ -31,19 +31,26 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	reply.Term = args.Term
+	reply.XLen = rf.getLastIndex() + 1
+	reply.XIndex = args.PrevLogIndex
+	reply.XTerm = args.PrevLogTerm
 	rf.resetElectionTime()
 
 	if len(args.Entries) > 0 {
-		DPrintf("[S%d T%d]log replication %v %d", rf.me, rf.currentTerm, len(args.Entries), rf.logs.lastIndex())
+		DPrintf("[S%d T%d]log replication %v %d", rf.me, rf.currentTerm, len(rf.logs), rf.getLastIndex())
 	}
 
-	// log replication
-	if args.PrevLogIndex > rf.logs.lastIndex() ||
-		(args.PrevLogIndex <= rf.logs.lastIndex() && rf.logs[args.PrevLogIndex].Term != args.PrevLogTerm) {
-		conflictIndex := min(args.PrevLogIndex, rf.logs.lastIndex())
-		for i := conflictIndex - 1; i >= 0; i-- {
-			if rf.logs[i].Term == args.PrevLogTerm || i == 0 {
-				reply.PrevLogIndex = i
+	// judge If conflict
+	if args.PrevLogIndex > rf.getLastIndex() {
+		return
+	}
+
+	if args.PrevLogIndex <= rf.getLastIndex() && rf.getLogTerm(args.PrevLogIndex) != args.PrevLogTerm {
+		reply.XTerm = rf.getLogTerm(args.PrevLogIndex)
+		reply.XIndex = args.PrevLogIndex
+		for i := args.PrevLogIndex - 1; i >= rf.lastIncludedIndex; i-- {
+			if rf.getLogTerm(i) != reply.Term {
+				reply.XIndex = i + 1
 				break
 			}
 		}
@@ -55,11 +62,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	for i, entry := range args.Entries {
 		logIndex := i + args.PrevLogIndex + 1
 		// delete the existing entry and all that follow it
-		if logIndex <= rf.logs.lastIndex() && entry.Term != rf.logs[logIndex].Term {
-			rf.logs = rf.logs[:logIndex]
+		if logIndex <= rf.getLastIndex() && entry.Term != rf.getLogTerm(logIndex) {
+			rf.logs = rf.getLogHead(logIndex)
 			rf.persist()
 		}
-		if logIndex > rf.logs.lastIndex() {
+		if logIndex > rf.getLastIndex() {
 			rf.logs = append(rf.logs, args.Entries[i:]...)
 			rf.persist()
 			break
@@ -68,7 +75,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	if args.LeaderCommit > rf.commitIndex {
 		// DPrintf("[S%d T%d]follower broadcast", rf.me, rf.currentTerm)
-		rf.commitIndex = min(args.LeaderCommit, rf.logs.lastIndex())
+		rf.commitIndex = min(args.LeaderCommit, rf.getLastIndex())
 		rf.applyCond.Broadcast()
 	}
 
@@ -83,4 +90,115 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	rf.mu.Unlock()
 
 	return ok
+}
+
+// heartBeats with logEntry
+func (rf *Raft) sendHeartBeats() {
+	for i := 0; i < len(rf.peers); i++ {
+		if i == rf.me {
+			rf.resetElectionTime()
+			continue
+		}
+		args := AppendEntriesArgs{
+			Term:         rf.currentTerm,
+			LeaderId:     rf.me,
+			PrevLogIndex: 0,
+			PrevLogTerm:  0,
+			Entries:      nil,
+			LeaderCommit: rf.commitIndex,
+		}
+		if rf.nextIndex[i] > rf.lastIncludedIndex {
+			args.PrevLogIndex = rf.nextIndex[i] - 1
+			args.PrevLogTerm = rf.getLogTerm(rf.nextIndex[i] - 1)
+			if rf.getLastIndex() >= rf.nextIndex[i] {
+				args.Entries = rf.getLogTail(rf.nextIndex[i]) // truncate logs
+			}
+			go rf.handleHeartBeats(i, &args)
+		} else {
+			rf.startInstallSnapshot(i)
+		}
+	}
+}
+
+// handle call the rpc's response
+func (rf *Raft) handleHeartBeats(server int, args *AppendEntriesArgs) {
+	var reply AppendEntriesReply
+	ok := rf.sendAppendEntries(server, args, &reply)
+	if !ok {
+		return
+	}
+
+	func() {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+
+		// invalid rpc
+		if rf.currentTerm != args.Term {
+			return
+		}
+
+		if reply.Success {
+			// If successful: update nextIndex and matchIndex for follower
+			rf.matchIndex[server] = args.PrevLogIndex + len(args.Entries)
+			rf.nextIndex[server] = rf.matchIndex[server] + 1
+			// If there exists an N such that N > commitIndex, a majority of matchIndex[i] ≥ N,
+			// and log[N].term == currentTerm, then set commitIndex = N
+			for N := rf.getLastIndex(); N > rf.commitIndex; N-- {
+				if rf.getLogTerm(N) != rf.currentTerm {
+					continue
+				}
+				count := 1
+				for i := 0; i < len(rf.peers); i++ {
+					if i == rf.me {
+						continue
+					}
+					if rf.matchIndex[i] >= N {
+						count++
+					}
+					if count >= len(rf.peers)/2+1 {
+						// DPrintf("[S%d T%d]leader broadcast", rf.me, rf.currentTerm)
+						rf.commitIndex = N
+						rf.applyCond.Broadcast()
+						return
+					}
+				}
+			}
+		} else {
+			// If fail and old term, update to newer term
+			if reply.Term > rf.currentTerm {
+				rf.updateTerm(reply.Term)
+				return
+			}
+
+			if reply.Term != rf.currentTerm && rf.state != Leader {
+				return
+			}
+
+			// If AppendEntries fails because of log inconsistency:
+			// handle conflict, change nextIndex and retry
+
+			// Case 1: follower's log is too short:
+			if args.PrevLogIndex >= reply.XLen {
+				rf.nextIndex[server] = reply.XLen
+				return
+			}
+
+			// Case 2/3: leader has XTerm or not
+			lastIndexForXTerm := -1
+			for i := args.PrevLogIndex - 1; i >= rf.lastIncludedIndex; i-- {
+				if rf.getLogTerm(i) == reply.XTerm {
+					lastIndexForXTerm = i
+					break
+				}
+				if rf.getLogTerm(i) < reply.XTerm {
+					break
+				}
+			}
+			if lastIndexForXTerm != -1 {
+				rf.nextIndex[server] = lastIndexForXTerm
+			} else {
+				rf.nextIndex[server] = reply.XIndex
+			}
+		}
+	}()
 }

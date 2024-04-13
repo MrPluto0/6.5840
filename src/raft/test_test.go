@@ -501,8 +501,6 @@ func TestBackup3B(t *testing.T) {
 
 	cfg.one(rand.Int(), servers, true)
 
-	println("5 connect, leaderA, 1 cmd")
-
 	// put leader and one follower in a partition
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect((leader1 + 2) % servers)
@@ -524,8 +522,6 @@ func TestBackup3B(t *testing.T) {
 	cfg.connect((leader1 + 3) % servers)
 	cfg.connect((leader1 + 4) % servers)
 
-	println("connect 3, disconnect 2, leaderB, 51 cmd")
-
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
@@ -538,8 +534,6 @@ func TestBackup3B(t *testing.T) {
 		other = (leader2 + 1) % servers
 	}
 	cfg.disconnect(other)
-
-	println("connect 2, disconnect 3, leaderB, 101 cmd")
 
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
@@ -556,21 +550,16 @@ func TestBackup3B(t *testing.T) {
 	cfg.connect((leader1 + 1) % servers)
 	cfg.connect(other)
 
-	println("connect 3, disconnect 2, leaderB, 151 cmd")
-
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
-
-	println("connect 3, disconnect 2, leaderB, 201 cmd")
 
 	// now everyone
 	for i := 0; i < servers; i++ {
 		cfg.connect(i)
 	}
 
-	println("connect 5, leaderB, 202 cmd")
 	cfg.one(rand.Int(), servers, true)
 
 	cfg.end()
@@ -1123,6 +1112,7 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 	leader1 := cfg.checkOneLeader()
 
 	for i := 0; i < iters; i++ {
+		println("iterate ", i)
 		victim := (leader1 + 1) % servers
 		sender := leader1
 		if i%3 == 1 {
