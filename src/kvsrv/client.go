@@ -3,7 +3,7 @@ package kvsrv
 import (
 	"crypto/rand"
 	"math/big"
-	"time"
+	"sync/atomic"
 
 	"6.5840/labrpc"
 )
@@ -11,6 +11,9 @@ import (
 type Clerk struct {
 	server *labrpc.ClientEnd
 	// You will have to modify this struct.
+
+	id  int64
+	seq atomic.Int64
 }
 
 func nrand() int64 {
@@ -24,28 +27,17 @@ func MakeClerk(server *labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.server = server
 	// You'll have to add code here.
+	ck.id = nrand()
+	ck.seq.Store(0)
+
 	return ck
 }
 
-func (ck *Clerk) Call(svcMethod string, args interface{}, reply interface{}, timeout time.Duration) {
-	for {
-		done := make(chan bool)
-		go func() {
-			ok := ck.server.Call(svcMethod, args, reply)
-			done <- ok
-		}()
+func (ck *Clerk) Call(svcMethod string, args interface{}, reply interface{}) {
+	ok := false
 
-		select {
-		case <-time.After(timeout):
-			// log.Printf("[timeout] retry to send rpc for %v.\n", args)
-		case ok := <-done:
-			if ok {
-				// log.Printf("[success] %s %v %v\n", svcMethod, args, reply)
-				return
-			} else {
-				// log.Printf("[fail] retry to send rpc for %v.\n", args)
-			}
-		}
+	for !ok {
+		ok = ck.server.Call(svcMethod, args, reply)
 	}
 }
 
@@ -62,10 +54,11 @@ func (ck *Clerk) Call(svcMethod string, args interface{}, reply interface{}, tim
 func (ck *Clerk) Get(key string) string {
 	var reply GetReply
 	args := GetArgs{
-		Id:  nrand(),
+		Id:  ck.id,
+		Seq: ck.seq.Add(1),
 		Key: key,
 	}
-	ck.Call("KVServer.Get", &args, &reply, 3*time.Second)
+	ck.Call("KVServer.Get", &args, &reply)
 
 	// You will have to modify this function.
 	return reply.Value
@@ -83,12 +76,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) string {
 	// You will have to modify this function.
 	var reply PutAppendReply
 	args := PutAppendArgs{
-		Id:    nrand(),
+		Id:    ck.id,
+		Seq:   ck.seq.Add(1),
 		Key:   key,
 		Value: value,
 	}
 
-	ck.Call("KVServer."+op, &args, &reply, 3*time.Second)
+	ck.Call("KVServer."+op, &args, &reply)
 	return reply.Value
 }
 

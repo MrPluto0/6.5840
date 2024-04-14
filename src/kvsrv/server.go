@@ -14,25 +14,32 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
+type Operation struct {
+	Seq   int64
+	Value string
+}
+
 type KVServer struct {
 	mu sync.Mutex
 
 	kvs     map[string]string
-	records map[int64]string
+	records map[int64]Operation
 	// Your definitions here.
 }
 
+func (kv *KVServer) checkDuplicate(client, seq int64) (string, bool) {
+	op, ok := kv.records[client]
+	if ok && op.Seq == seq {
+		return op.Value, true
+	}
+	return "", false
+}
+
+// Get operation is idempotent, so we don't need to store the result
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-
-	// check if duplicate rpc
-	val, exist := kv.records[args.Id]
-	if exist {
-		reply.Value = val
-		return
-	}
 
 	value, ok := kv.kvs[args.Key]
 	if ok {
@@ -40,8 +47,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	} else {
 		reply.Value = ""
 	}
-	// store the value of rpc
-	kv.records[args.Id] = value
+
+	delete(kv.records, args.Id)
 }
 
 func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
@@ -49,14 +56,15 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	val, exist := kv.records[args.Id]
-	if exist {
-		reply.Value = val
+	if value, ok := kv.checkDuplicate(args.Id, args.Seq); ok {
+		reply.Value = value
 		return
 	}
 
 	kv.kvs[args.Key] = args.Value
-	kv.records[args.Id] = args.Value
+	reply.Value = ""
+
+	kv.records[args.Id] = Operation{args.Seq, reply.Value}
 }
 
 func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
@@ -64,9 +72,8 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
 
-	val, exist := kv.records[args.Id]
-	if exist {
-		reply.Value = val
+	if value, ok := kv.checkDuplicate(args.Id, args.Seq); ok {
+		reply.Value = value
 		return
 	}
 
@@ -77,8 +84,8 @@ func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 		reply.Value = ""
 	}
 
-	kv.records[args.Id] = value
 	kv.kvs[args.Key] = value + args.Value
+	kv.records[args.Id] = Operation{args.Seq, reply.Value}
 }
 
 func StartKVServer() *KVServer {
@@ -86,7 +93,7 @@ func StartKVServer() *KVServer {
 
 	// You may need initialization code here.
 	kv.kvs = make(map[string]string)
-	kv.records = make(map[int64]string)
+	kv.records = make(map[int64]Operation)
 
 	return kv
 }
