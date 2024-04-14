@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 type AppendEntriesArgs struct {
 	Term         int        // leader’s term
 	LeaderId     int        // so follower can redirect clients
@@ -92,11 +94,11 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-// heartBeats with logEntry
-func (rf *Raft) sendHeartBeats() {
+// heartBeats and append with logEntry
+func (rf *Raft) startAppendEntries() {
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
-			rf.resetElectionTime()
+			// rf.resetElectionTime()
 			continue
 		}
 		args := AppendEntriesArgs{
@@ -113,7 +115,7 @@ func (rf *Raft) sendHeartBeats() {
 			if rf.getLastIndex() >= rf.nextIndex[i] {
 				args.Entries = rf.getLogTail(rf.nextIndex[i]) // truncate logs
 			}
-			go rf.handleHeartBeats(i, &args)
+			go rf.handleAppendEntries(i, &args)
 		} else {
 			rf.startInstallSnapshot(i)
 		}
@@ -121,7 +123,7 @@ func (rf *Raft) sendHeartBeats() {
 }
 
 // handle call the rpc's response
-func (rf *Raft) handleHeartBeats(server int, args *AppendEntriesArgs) {
+func (rf *Raft) handleAppendEntries(server int, args *AppendEntriesArgs) {
 	var reply AppendEntriesReply
 	ok := rf.sendAppendEntries(server, args, &reply)
 	if !ok {
@@ -131,6 +133,9 @@ func (rf *Raft) handleHeartBeats(server int, args *AppendEntriesArgs) {
 	func() {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
+
+		// update ack time
+		rf.lastAck[server] = time.Now()
 
 		// invalid rpc
 		if rf.currentTerm != args.Term {
@@ -201,4 +206,15 @@ func (rf *Raft) handleHeartBeats(server int, args *AppendEntriesArgs) {
 			}
 		}
 	}()
+}
+
+// judge how many active peer is still active
+func (rf *Raft) quorumActive() bool {
+	activeCount := 1
+	for i, tracker := range rf.lastAck {
+		if i != rf.me && time.Since(tracker) <= MaxElectionTimeout*time.Millisecond {
+			activeCount++
+		}
+	}
+	return activeCount >= len(rf.peers)/2+1
 }

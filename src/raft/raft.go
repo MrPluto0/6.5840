@@ -62,9 +62,9 @@ const (
 )
 
 const (
-	MaxELectionTime = 1000
-	MinElectionTime = 700
-	HeartbeatTime   = 100
+	MaxElectionTimeout = 1000
+	MinElectionTimeout = 700
+	HeartbeatTimeout   = 100
 )
 
 // A Go object implementing a single Raft peer.
@@ -82,10 +82,9 @@ type Raft struct {
 	// state a Raft server must maintain.
 
 	// Custom state byself
-	state        ServerState
-	electTimeout time.Duration
-	electTime    time.Time
-	heartbeat    time.Duration
+	state     ServerState
+	electTime time.Time
+	lastAck   []time.Time // for each server, last time when reply
 
 	// Snapshot state
 	lastIncludedIndex int
@@ -135,6 +134,7 @@ func (rf *Raft) updateState(state ServerState) {
 		for i := 0; i < len(rf.peers); i++ {
 			rf.nextIndex[i] = rf.getLastIndex() + 1
 			rf.matchIndex[i] = rf.getLastIndex()
+			rf.lastAck[i] = time.Now()
 		}
 	}
 }
@@ -257,6 +257,8 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.logs = append(rf.logs, log)
 	rf.persist()
 
+	rf.startAppendEntries()
+
 	return index, term, isLeader
 }
 
@@ -281,8 +283,8 @@ func (rf *Raft) killed() bool {
 
 func (rf *Raft) resetElectionTime() {
 	now := time.Now()
-	rf.electTimeout = time.Duration(MinElectionTime + (rand.Int63() % (MaxELectionTime - MinElectionTime)))
-	rf.electTime = now.Add(rf.electTimeout * time.Millisecond)
+	electTimeout := time.Duration(MinElectionTimeout + (rand.Int63() % (MaxElectionTimeout - MinElectionTimeout)))
+	rf.electTime = now.Add(electTimeout * time.Millisecond)
 }
 
 func (rf *Raft) applyTicker() {
@@ -317,18 +319,27 @@ func (rf *Raft) ticker() {
 
 		// Extend the process to reduce extra loops
 		// Sync the process to avoid extra judges of lock
+
 		rf.mu.Lock()
-		if time.Now().After(rf.electTime) {
-			rf.startElection()
-		}
-		if rf.state == Leader {
-			rf.sendHeartBeats()
+		switch rf.state {
+		case Follower:
+			fallthrough
+		case Candidate:
+			if time.Now().After(rf.electTime) {
+				rf.startElection()
+			}
+		case Leader:
+			if !rf.quorumActive() {
+				rf.updateState(Follower)
+				break
+			}
+			rf.startAppendEntries()
 		}
 		rf.mu.Unlock()
 
+		time.Sleep(HeartbeatTimeout * time.Millisecond) // heartbeat << electionTime
+
 		// pause for a random amount of time between 50 and 350 milliseconds.
-		// heartbeat << electionTime
-		time.Sleep(rf.heartbeat)
 		// ms := 50 + +(rand.Int63() % 300)
 		// time.Sleep(time.Duration(ms) * time.Millisecond)
 	}
@@ -354,20 +365,23 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// Your initialization code here (3A, 3B, 3C).
 	rf.state = Follower
-	rf.heartbeat = time.Duration(HeartbeatTime) * time.Millisecond
 	rf.resetElectionTime()
 
 	rf.currentTerm = 0
 	rf.votedFor = Null
 	rf.logs = make([]LogEntry, 0)
 	rf.logs = append(rf.logs, LogEntry{Term: 0, Command: nil})
+
+	// snapshot
 	rf.lastIncludedIndex = 0
 	rf.lastIncludedTerm = 0
 	rf.snapshot = rf.persister.ReadSnapshot()
+
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 	rf.nextIndex = make([]int, len(peers))
 	rf.matchIndex = make([]int, len(peers))
+	rf.lastAck = make([]time.Time, len(peers))
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
@@ -375,6 +389,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	for i := 0; i < len(peers); i++ {
 		rf.nextIndex[i] = rf.getLastIndex() + 1
 		rf.matchIndex[i] = rf.getLastIndex()
+		rf.lastAck[i] = time.Now()
 	}
 
 	// start ticker goroutine to start elections

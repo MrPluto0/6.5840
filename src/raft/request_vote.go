@@ -1,7 +1,5 @@
 package raft
 
-import "sync/atomic"
-
 // example RequestVote RPC arguments structure.
 // field names must start with capital letters!
 type RequestVoteArgs struct {
@@ -102,17 +100,16 @@ func (rf *Raft) startElection() {
 	}
 
 	// send RequestVote to each server
-	voteCount := int32(1)
+	voteCount := 1
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
-			// rf.resetElectionTime()
 			continue
 		}
 		go rf.handleRequestVote(i, &args, &voteCount)
 	}
 }
 
-func (rf *Raft) handleRequestVote(server int, args *RequestVoteArgs, voteCount *int32) {
+func (rf *Raft) handleRequestVote(server int, args *RequestVoteArgs, voteCount *int) {
 	var reply RequestVoteReply
 	success := rf.sendRequestVote(server, args, &reply)
 	if !success {
@@ -123,6 +120,7 @@ func (rf *Raft) handleRequestVote(server int, args *RequestVoteArgs, voteCount *
 	func() {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
+
 		// invalid rpc
 		if rf.currentTerm != args.Term {
 			return
@@ -135,8 +133,10 @@ func (rf *Raft) handleRequestVote(server int, args *RequestVoteArgs, voteCount *
 		if !reply.VoteGranted {
 			return
 		}
-		count := atomic.AddInt32(voteCount, 1)
-		if rf.state == Candidate && int(count) >= len(rf.peers)/2+1 {
+
+		// elect the leader if win majority
+		*voteCount++
+		if rf.state == Candidate && *voteCount >= len(rf.peers)/2+1 {
 			rf.updateState(Leader)
 			rf.resetElectionTime()
 		}

@@ -1,5 +1,7 @@
 package raft
 
+import "time"
+
 type InstallSnapshotArgs struct {
 	Term              int    // leader’s term
 	LeaderId          int    // so follower can redirect clients
@@ -43,7 +45,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	rf.lastIncludedTerm = args.LastIncludedTerm
 	rf.persist()
 
-	// let service to update logs
+	// notice service layer to update logs
 	msg := ApplyMsg{
 		CommandValid:  false,
 		SnapshotValid: true,
@@ -90,6 +92,9 @@ func (rf *Raft) handleInstallSnapshot(server int, args *InstallSnapshotArgs) {
 	func() {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
+
+		// update ack time
+		rf.lastAck[server] = time.Now()
 
 		if reply.Term > rf.currentTerm {
 			rf.updateTerm(reply.Term)
