@@ -56,11 +56,6 @@
 
 3. 考虑何时调用`Install Snapshot RPC`，论文中写的是发现 Older Follower，可以理解为，需要同步给 Follower 的日志的一部分已经因为 snapshot 截断，无法发送，此时就可调用该 RPC。
 
-## 注意事项
-
-- Committing entries from previous terms 问题
-  - `no op` log
-
 ## 实验优化
 
 性能优化的核心在于减少 RPC 的发送和尽快发送 RPC，在测试时可以将信息输出到日志中分析并考虑。本节以`TestBackup3B`测试用例为标准，这是测试用例中第一个用时很久的测试，最初用时 40~50s。从以下三个方面去优化。
