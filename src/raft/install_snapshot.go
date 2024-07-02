@@ -15,6 +15,7 @@ type InstallSnapshotReply struct {
 	Term int // currentTerm, for leader to update itself
 }
 
+// RPC: install snapshot to backward raft server
 func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()

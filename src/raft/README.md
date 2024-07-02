@@ -52,7 +52,7 @@
 
 1. 理解 Snapshot 流程。实际上，Raft Server 本身不会生成快照内容，这是由上层的 service layer 完成，并调用 Raft 的 Snapshot 函数去完成的（测试用例中有生成 snapshot 的代码）。但是，由于 InstallSnapshot RPC 的存在，Leader 在发现落后的 Follower 时，会将其快照数据发送给 Follower，而上层服务需要记录每一个 Raft Server 的状态数据，因此此时它不知道 Follower 也更新了快照，所以 Follower 需要将该信息同步给 service layer，在该实验中表现为主动发送一个 Snapshot Msg。
 
-2. 区别真实索引和虚拟索引。由于 Snapshot 会将缓存中的日志进行截断，因此这会导致 Index 值和真实索引不一致，规则为`realIndex = virtIndex + lastIncludeIndex`。可以在`log.go`查看。
+2. 区别真实索引和虚拟索引。由于 Snapshot 会将缓存中的日志进行截断，因此这会导致 Index 值和真实索引不一致，规则为`realIndex = virtIndex - lastIncludeIndex`。可以在`log.go`查看。
 
 3. 考虑何时调用`Install Snapshot RPC`，论文中写的是发现 Older Follower，可以理解为，需要同步给 Follower 的日志的一部分已经因为 snapshot 截断，无法发送，此时就可调用该 RPC。
 
