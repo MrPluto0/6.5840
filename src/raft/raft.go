@@ -216,7 +216,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logs = rf.getLogTail(index)
 	rf.lastIncludedIndex = index
 	rf.lastIncludedTerm = rf.getLogTerm(index)
-	rf.logs[0].Command = nil
 	rf.snapshot = snapshot
 
 	DPrintf("[S%d T%d]Snapshot %v %v", rf.me, rf.currentTerm, rf.lastIncludedIndex, rf.getLastIndex())
@@ -293,12 +292,12 @@ func (rf *Raft) applyTicker() {
 
 	for !rf.killed() {
 		if rf.commitIndex > rf.lastApplied {
+			DPrintf("[S%d T%d]apply log: %d %d %d", rf.me, rf.currentTerm, rf.lastApplied, rf.commitIndex, rf.lastIncludedIndex)
 			msg := ApplyMsg{
 				CommandValid: true,
 				CommandIndex: rf.lastApplied + 1,
 				Command:      rf.getLog(rf.lastApplied + 1).Command,
 			}
-			DPrintf("[S%d T%d]apply log: %d %d %v", rf.me, rf.currentTerm, rf.lastApplied, msg.CommandIndex, msg.Command)
 			rf.mu.Unlock()
 			rf.applyCh <- msg // may wait for applyCh to get msg, so use Unlock()
 			rf.mu.Lock()

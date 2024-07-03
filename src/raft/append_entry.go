@@ -39,11 +39,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.resetElectionTime()
 
 	if len(args.Entries) > 0 {
-		DPrintf("[S%d T%d]log replication %v %d", rf.me, rf.currentTerm, len(rf.logs), rf.getLastIndex())
+		DPrintf("[S%d T%d]log replication %v %v", rf.me, rf.currentTerm, len(args.Entries), args.PrevLogIndex)
 	}
 
-	// judge If conflict
-	if args.PrevLogIndex > rf.getLastIndex() {
+	// judge if out of boundary
+	if args.PrevLogIndex > rf.getLastIndex() || args.PrevLogIndex < rf.lastIncludedIndex {
 		return
 	}
 
@@ -98,26 +98,24 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 func (rf *Raft) startAppendEntries() {
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
-			// rf.resetElectionTime()
 			continue
 		}
-		args := AppendEntriesArgs{
-			Term:         rf.currentTerm,
-			LeaderId:     rf.me,
-			PrevLogIndex: 0,
-			PrevLogTerm:  0,
-			Entries:      nil,
-			LeaderCommit: rf.commitIndex,
-		}
-		if rf.nextIndex[i] > rf.lastIncludedIndex {
-			args.PrevLogIndex = rf.nextIndex[i] - 1
-			args.PrevLogTerm = rf.getLogTerm(rf.nextIndex[i] - 1)
+
+		if rf.nextIndex[i] <= rf.lastIncludedIndex {
+			rf.startInstallSnapshot(i)
+		} else {
+			args := AppendEntriesArgs{
+				Term:         rf.currentTerm,
+				LeaderId:     rf.me,
+				PrevLogIndex: rf.nextIndex[i] - 1,
+				PrevLogTerm:  rf.getLogTerm(rf.nextIndex[i] - 1),
+				Entries:      nil,
+				LeaderCommit: rf.commitIndex,
+			}
 			if rf.getLastIndex() >= rf.nextIndex[i] {
 				args.Entries = rf.getLogTail(rf.nextIndex[i]) // truncate logs
 			}
 			go rf.handleAppendEntries(i, &args)
-		} else {
-			rf.startInstallSnapshot(i)
 		}
 	}
 }

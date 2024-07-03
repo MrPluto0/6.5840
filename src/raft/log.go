@@ -9,6 +9,9 @@ type LogEntries []LogEntry
 
 func (rf *Raft) getLog(virtualIdx int) LogEntry {
 	realIdx := virtualIdx - rf.lastIncludedIndex
+	if realIdx < 0 {
+		DPrintf("[S%d T%d]over: %d %d %d", rf.me, rf.currentTerm, rf.lastApplied, rf.commitIndex, rf.lastIncludedIndex)
+	}
 	return rf.logs[realIdx]
 }
 

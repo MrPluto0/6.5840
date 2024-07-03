@@ -20,13 +20,16 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	if args.Term > rf.currentTerm {
+		rf.updateState(Follower)
+	}
 	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm {
+	if args.Term < rf.currentTerm || args.LastIncludedIndex < rf.lastIncludedIndex {
 		return
 	}
 
-	// DPrintf("[S%d T%d]Install snapshot %v %v", rf.me, rf.currentTerm, args.LastIncludedIndex, args.LastIncludedTerm)
+	DPrintf("[S%d T%d]Installing Snapshot %v %v %v %v", rf.me, rf.currentTerm, args.LastIncludedIndex, rf.lastIncludedIndex, rf.commitIndex, rf.lastApplied)
 
 	if args.LastIncludedIndex <= rf.getLastIndex() && rf.getLogTerm(args.LastIncludedIndex) == args.LastIncludedTerm {
 		rf.logs = rf.getLogTail(args.LastIncludedIndex)
@@ -38,6 +41,8 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 
 	if args.LastIncludedIndex > rf.commitIndex {
 		rf.commitIndex = args.LastIncludedIndex
+	}
+	if args.LastIncludedIndex > rf.lastApplied {
 		rf.lastApplied = args.LastIncludedIndex
 	}
 
@@ -78,7 +83,6 @@ func (rf *Raft) startInstallSnapshot(server int) {
 		LastIncludedTerm:  rf.lastIncludedTerm,
 		Data:              rf.snapshot,
 	}
-	DPrintf("[S%d T%d]Install snapshot %v %v", rf.me, rf.currentTerm, args.LastIncludedIndex, args.LastIncludedTerm)
 
 	go rf.handleInstallSnapshot(server, &args)
 }
