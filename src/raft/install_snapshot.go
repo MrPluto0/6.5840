@@ -25,7 +25,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	}
 	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm || args.LastIncludedIndex < rf.lastIncludedIndex {
+	if args.Term < rf.currentTerm || args.LastIncludedIndex <= rf.lastIncludedIndex {
 		return
 	}
 

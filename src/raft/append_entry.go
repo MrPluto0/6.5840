@@ -42,8 +42,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		DPrintf("[S%d T%d]log replication %v %v", rf.me, rf.currentTerm, len(args.Entries), args.PrevLogIndex)
 	}
 
+	// outdated prevLogIndex, but it's successful
+	if args.PrevLogIndex < rf.lastIncludedIndex {
+		reply.Success = true
+		return
+	}
+
 	// judge if out of boundary
-	if args.PrevLogIndex > rf.getLastIndex() || args.PrevLogIndex < rf.lastIncludedIndex {
+	if args.PrevLogIndex > rf.getLastIndex() {
 		return
 	}
 
