@@ -7,3 +7,6 @@
   - [x] lab3B: 实现日志功能
   - [x] lab3C: 实现持久存储
   - [x] lab3D: 实现日志压缩(Snapshot)
+- [x] lab4: [KV Raft](src/kvraft/README.md)
+  - [x] lab4A: 实现基础 KV 服务
+  - [x] lab4B：实现快照服务
