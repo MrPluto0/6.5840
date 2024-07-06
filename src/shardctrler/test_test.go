@@ -478,6 +478,7 @@ func TestMulti(t *testing.T) {
 		c := ck.Query(-1) // Config leader claims
 
 		cfg.ShutdownServer(leader)
+		fmt.Printf("Leader %v %v\n", leader, c)
 
 		attempts := 0
 		for isLeader, leader = cfg.Leader(); isLeader; time.Sleep(1 * time.Second) {
@@ -487,6 +488,7 @@ func TestMulti(t *testing.T) {
 		}
 
 		c1 = ck.Query(-1)
+		fmt.Printf("Leader %v %v\n", leader, c1)
 		check_same_config(t, c, c1)
 
 		fmt.Printf("  ... Passed\n")

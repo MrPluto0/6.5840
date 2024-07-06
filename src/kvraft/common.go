@@ -7,6 +7,12 @@ const (
 	ErrWrongLeader = "ErrWrongLeader"
 )
 
+const (
+	GET    = "Get"
+	PUT    = "Put"
+	APPEND = "Append"
+)
+
 type Err string
 
 type ErrStruct struct {

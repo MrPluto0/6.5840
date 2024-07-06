@@ -10,12 +10,6 @@ import (
 	"6.5840/raft"
 )
 
-const (
-	GET    = "Get"
-	PUT    = "Put"
-	APPEND = "Append"
-)
-
 type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
