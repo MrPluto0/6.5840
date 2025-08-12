@@ -5,10 +5,10 @@ import "sort"
 func (sc *ShardCtrler) executeOp(op *Op) {
 	switch op.Method {
 	case "Join":
-		DPrintf("Join Servers %v\n", op.Servers)
+		DPrintf("Join Servers %v %v\n", op.Servers, sc.getConfig(-1).Shards)
 		sc.executeJoin(op.Servers)
 	case "Leave":
-		DPrintf("Leave Servers %v\n", op.GIDs)
+		DPrintf("Leave Servers %v %v\n", op.GIDs, sc.getConfig(-1).Shards)
 		sc.executeLeave(op.GIDs)
 	case "Move":
 		DPrintf("Move Shard[%v]=%v\n", op.Shard, op.GID)
@@ -17,8 +17,8 @@ func (sc *ShardCtrler) executeOp(op *Op) {
 		cfg := sc.executeQuery(op.Num)
 		op.Config = cfg
 	}
-	c := sc.getConfig(-1)
-	DPrintf("[Server %d] Num: %d, Shards %v\n", sc.me, c.Num, c.Shards)
+	// c := sc.getConfig(-1)
+	// DPrintf("[Server %d] Num: %d, Shards %v\n", sc.me, c.Num, c.Shards)
 }
 
 func (sc *ShardCtrler) executeJoin(groups map[int][]string) {

@@ -180,7 +180,7 @@ func (sc *ShardCtrler) ticker() {
 
 		op := msg.Command.(Op)
 		index := msg.CommandIndex
-		DPrintf("[Server %d] Rev Command Msg: %v \n", sc.me, op.Method)
+		// DPrintf("[Server %d] Rev Command Msg: %v \n", sc.me, op.Method)
 
 		// check twice, because the message need time to receive.
 		if ok := sc.checkDuplicate(op.Id, op.Seq); !ok {

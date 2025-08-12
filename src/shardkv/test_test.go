@@ -1,15 +1,18 @@
 package shardkv
 
-import "6.5840/porcupine"
-import "6.5840/models"
-import "testing"
-import "strconv"
-import "time"
-import "fmt"
-import "sync/atomic"
-import "sync"
-import "math/rand"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.5840/models"
+	"6.5840/porcupine"
+)
 
 const linearizabilityCheckTimeout = 1 * time.Second
 
@@ -263,6 +266,8 @@ func TestSnapshot5B(t *testing.T) {
 	cfg.leave(1)
 	cfg.join(0)
 
+	println("join 100")
+
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
@@ -279,6 +284,8 @@ func TestSnapshot5B(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	cfg.checklogs()
+
+	println("shutdown all")
 
 	cfg.ShutdownGroup(0)
 	cfg.ShutdownGroup(1)
@@ -327,6 +334,8 @@ func TestMissChange5B(t *testing.T) {
 	cfg.leave(1)
 	cfg.leave(0)
 
+	println("1111111111")
+
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 		x := randstring(20)
@@ -342,6 +351,8 @@ func TestMissChange5B(t *testing.T) {
 		ck.Append(ka[i], x)
 		va[i] += x
 	}
+
+	println("222222222222")
 
 	cfg.StartServer(0, 0)
 	cfg.StartServer(1, 0)
@@ -362,6 +373,8 @@ func TestMissChange5B(t *testing.T) {
 
 	cfg.join(0)
 	cfg.leave(2)
+
+	println("333333333333333")
 
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])

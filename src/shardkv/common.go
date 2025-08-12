@@ -10,10 +10,23 @@ package shardkv
 //
 
 const (
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongGroup  = "ErrWrongGroup"
-	ErrWrongLeader = "ErrWrongLeader"
+	GET      = "Get"
+	PUT      = "Put"
+	APPEND   = "Append"
+	AddShard = "AddShard"
+	DelShard = "DelShard"
+	UpConfig = "UpConfig"
+)
+
+const (
+	OK                = "OK"
+	ErrNoKey          = "ErrNoKey"
+	ErrWrongGroup     = "ErrWrongGroup"
+	ErrWrongLeader    = "ErrWrongLeader"
+	ErrTimeout        = "ErrTimeout"
+	ErrServerKilled   = "ErrServerKilled"
+	ErrConfigNum      = "ErrConfigNum"
+	ErrShardNotArrive = "ErrShardNotArrive"
 )
 
 type Err string
@@ -27,6 +40,8 @@ type PutAppendArgs struct {
 	// You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Id  int64
+	Seq int64
 }
 
 type PutAppendReply struct {
@@ -36,9 +51,22 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
+	Id  int64
+	Seq int64
 }
 
 type GetReply struct {
 	Err   Err
 	Value string
+}
+
+type AddShardArgs struct {
+	Id    int64
+	Seq   int64
+	Shard int
+	Data  map[string]string
+}
+
+type AddShardReply struct {
+	Err Err
 }

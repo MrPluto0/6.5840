@@ -33,8 +33,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.servers = servers
 	// Your code here.
 	ck.id = nrand()
-	ck.leaderId = 0
 	ck.seq.Store(0)
+	ck.leaderId = 0
 
 	return ck
 }
